@@ -10,14 +10,39 @@ if %errorLevel% == 0 (
     exit /b
 )
 
-:: Backup current hosts file
-copy "C:\Windows\System32\drivers\etc\hosts" "C:\Windows\System32\drivers\etc\hosts.backup.%date:~-4%%date:~4,2%%date:~7,2%" >nul
+echo.
+echo =============================================
+echo   Spotify Ad Blocker
+echo =============================================
+echo.
+echo  [1] Add    - Block Spotify ads
+echo  [2] Remove - Restore Spotify ads
+echo  [3] Exit
+echo.
+set /p "choice=Enter your choice (1/2/3): "
 
+if "%choice%"=="1" goto ADD
+if "%choice%"=="2" goto REMOVE
+if "%choice%"=="3" goto END
+
+echo Invalid choice. Exiting.
+goto END
+
+:ADD
+:: Check if entries are already present to avoid duplicates
+findstr /c:"# === Disabling ===" "C:\Windows\System32\drivers\etc\hosts" >nul 2>&1
+if %errorLevel% == 0 (
+    echo.
+    echo Spotify ad blocker entries already exist in the hosts file.
+    echo Nothing to do.
+    goto END
+)
+
+call :BACKUP
 echo.
 echo Disabling Spotify Ad entries...
 
 (
-echo.
 echo # === Disabling ===
 echo 0.0.0.0 adeventtracker.spotify.com
 echo 0.0.0.0 ads-fa.spotify.com
@@ -39,8 +64,51 @@ echo # === Finished ===
 echo.
 echo Hosts file updated successfully!
 echo.
-echo Close Spotify completely (check Task Manager → end all Spotify processes)
+echo Close Spotify completely (check Task Manager - end all Spotify processes)
 echo Then reopen Spotify. Ads should be blocked or skipped.
+goto END
+
+:REMOVE
+:: Check if entries exist before attempting removal
+findstr /c:"# === Disabling ===" "C:\Windows\System32\drivers\etc\hosts" >nul 2>&1
+if %errorLevel% neq 0 (
+    echo.
+    echo No Spotify ad blocker entries found in the hosts file.
+    echo Nothing to remove.
+    goto END
+)
+
+call :BACKUP
 echo.
-echo To remove this blocker later, run the same script again and choose "Remove".
+echo Removing Spotify Ad blocker entries...
+
+:: Use PowerShell to remove all lines between and including the markers
+powershell -Command ^
+    "$hosts = 'C:\Windows\System32\drivers\etc\hosts';" ^
+    "$lines = Get-Content $hosts;" ^
+    "$result = @();" ^
+    "$skip = $false;" ^
+    "foreach ($line in $lines) {" ^
+    "    if ($line -match [regex]::Escape('# === Disabling ===')) { $skip = $true }" ^
+    "    elseif ($line -match [regex]::Escape('# === Finished ===')) { $skip = $false }" ^
+    "    elseif (-not $skip) { $result += $line }" ^
+    "};" ^
+    "($result | Out-String).TrimEnd() | Set-Content $hosts"
+
+echo.
+echo Spotify ad blocker entries removed from the hosts file.
+echo.
+echo Close Spotify completely (check Task Manager - end all Spotify processes)
+echo Then reopen Spotify. Ads will no longer be blocked.
+goto END
+
+:BACKUP
+copy "C:\Windows\System32\drivers\etc\hosts" "C:\Windows\System32\drivers\etc\hosts.backup.%date:~-4%%date:~4,2%%date:~7,2%" >nul 2>&1
+if %errorLevel% neq 0 (
+    echo WARNING: Failed to create a backup of the hosts file. Proceeding anyway.
+)
+exit /b
+
+:END
+echo.
 pause
